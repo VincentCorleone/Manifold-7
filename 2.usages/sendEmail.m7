@@ -1,0 +1,23 @@
+# M7 Usage: sendEmail
+# 描述：通过 AI 模型撰写邮件
+
+protocol: M7-0.1
+intent: Compose a professional email based on the given details
+input:
+  - name: recipient
+    type: string
+    required: true
+    description: 收件人邮箱
+  - name: subject
+    type: string
+    required: true
+    description: 邮件主题
+  - name: body_points
+    type: string
+    required: true
+    description: 邮件正文要点（逗号分隔）
+output:
+  format: m7-compressed
+  schema: email.v1
+---
+Compose a professional email. Recipient: {{recipient}}. Subject: {{subject}}. Key points to cover: {{body_points}}. Output the complete email with To, Subject, and Body.

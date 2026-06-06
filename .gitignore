@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+
+# QCOW2 images (large binaries)
+*.qcow2
+*.raw
+
+# Rust build artifacts
+target/
+
+# IDE
+.vscode/
+.idea/

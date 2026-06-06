@@ -1,0 +1,19 @@
+[package]
+name = "manifold-graph"
+version = "0.1.0"
+edition = "2021"
+description = "MANIFOLD-7 Kernel: Graph Storage Engine & Inference Scheduler"
+authors = ["MANIFOLD-7"]
+license = "MIT"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+parking_lot = "0.12"
+thiserror = "1"
+tracing = "0.1"
+
+[lib]
+name = "manifold_graph"
+path = "src/lib.rs"
