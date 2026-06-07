@@ -236,43 +236,96 @@ cmd_run_vm() {
         err "qemu-system-x86_64 not installed. Install: sudo apt-get install qemu-system-x86"
     fi
 
-    # 启动 QEMU，端口转发 8080 → 8080
-    log "Booting M7 VM..."
+    # 读取 API Key (用于通过 HTTP header 传给 VM 内 CGI)
+    local runner_upper api_key
+    runner_upper=$(echo "$runner_name" | tr 'a-z' 'A-Z')
+    eval "api_key=\${M7_${runner_upper}_API_KEY:-\${M7_API_KEY:-}}"
+    if [ -z "$api_key" ]; then
+        warn "No API key set (\$M7_${runner_upper}_API_KEY); VM will run in dry-run mode"
+    fi
+
+    # 检测 KVM 加速
+    local accel_args=""
+    if [ -e /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+        accel_args="-enable-kvm -cpu host"
+        log "KVM acceleration enabled"
+    else
+        accel_args="-cpu max"
+        warn "KVM not available; falling back to TCG (will be slow)"
+    fi
+
+    # 选择空闲端口 (避免与已占用 8080 冲突)
+    local host_port="${M7_VM_PORT:-8080}"
+
+    # 启动 QEMU
+    log "Booting M7 VM (port ${host_port})..."
     qemu-system-x86_64 \
-        -m 256 \
+        $accel_args \
+        -m 512 \
         -nographic \
-        -drive file="$QCOW2",format=qcow2,if=ide \
-        -netdev user,id=m7net,hostfwd=tcp::8080-:8080 \
-        -device e1000,netdev=m7net \
-        &
+        -no-reboot \
+        -drive file="$QCOW2",format=qcow2,if=virtio \
+        -netdev user,id=m7net,hostfwd=tcp::${host_port}-:8080 \
+        -device virtio-net-pci,netdev=m7net \
+        -serial null \
+        -monitor none \
+        >/tmp/m7-vm.log 2>&1 &
     QEMU_PID=$!
 
+    # 注册 trap：意外退出时杀掉 QEMU
+    trap 'kill '"$QEMU_PID"' 2>/dev/null; wait '"$QEMU_PID"' 2>/dev/null' EXIT INT TERM
+
     # 等待 VM 就绪
-    log "Waiting for VM..."
-    for i in $(seq 1 60); do
-        if curl -s http://localhost:8080/ >/dev/null 2>&1; then
+    log "Waiting for VM (timeout 120s)..."
+    local ready=false
+    for i in $(seq 1 120); do
+        if ! kill -0 "$QEMU_PID" 2>/dev/null; then
+            err "QEMU died unexpectedly. Last log:\n$(tail -20 /tmp/m7-vm.log)"
+        fi
+        if curl -s -o /dev/null -w '%{http_code}' "http://localhost:${host_port}/" 2>/dev/null | grep -q '^2'; then
             log "VM ready (${i}s)"
+            ready=true
             break
         fi
         sleep 1
     done
+    $ready || err "VM did not become ready within 120s. Log:\n$(tail -30 /tmp/m7-vm.log)"
 
-    # 发送 M7 命令到 VM
+    # 组装查询参数
     log "Sending M7 command to VM..."
     local params=""
     for a in "$@"; do
         case "$a" in
-            *=*) params="$params&$a" ;;
+            *=*)
+                # 简单 URL 编码 (空格 → %20，& → %26)
+                local k="${a%%=*}"
+                local v="${a#*=}"
+                v=$(echo "$v" | sed 's/%/%25/g; s/&/%26/g; s/ /%20/g; s/+/%2B/g; s/#/%23/g')
+                params="$params&${k}=${v}"
+                ;;
         esac
     done
 
-    local vm_url="http://localhost:8080/cgi-bin/m7?usage=${usage_name}&runner=${runner_name}${params}"
-    curl -s "$vm_url" | python3 -m json.tool 2>/dev/null || curl -s "$vm_url"
+    local vm_url="http://localhost:${host_port}/cgi-bin/m7?usage=${usage_name}&runner=${runner_name}${params}"
+    info "URL: $vm_url"
+
+    # 通过 X-M7-Api-Key header 把 API Key 透传给 CGI
+    local response
+    if [ -n "$api_key" ]; then
+        response=$(curl -s -H "X-M7-Api-Key: ${api_key}" "$vm_url")
+    else
+        response=$(curl -s "$vm_url")
+    fi
+
+    echo "$response" | python3 -m json.tool 2>/dev/null \
+        || echo "$response" | py -m json.tool 2>/dev/null \
+        || echo "$response"
 
     echo ""
     log "Shutting down VM..."
-    kill $QEMU_PID 2>/dev/null
-    wait $QEMU_PID 2>/dev/null
+    kill "$QEMU_PID" 2>/dev/null || true
+    wait "$QEMU_PID" 2>/dev/null || true
+    trap - EXIT INT TERM
     log "Done."
 }
 

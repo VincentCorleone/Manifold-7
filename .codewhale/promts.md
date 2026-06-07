@@ -54,6 +54,8 @@ Manifold-7/
 │
 └── README.md                  ← 项目文档
 
+```
+
 
 
 
@@ -64,7 +66,7 @@ flowchart TB
     subgraph IL["　意图层 — Intent Layer　"]
         NL("自然语言") --> M7E("M7 语义编码
             engine.py")
-        M7E --> TD("任务分解
+        M7E <--> TD("任务分解
             decomposer.py")
     end
 
@@ -73,21 +75,91 @@ flowchart TB
         LB --> HC("健康检查")
         HC --> FT("故障转移
             orchestrator.py")
+        HC -->|状态反馈| MR
+        MC("镜像协调器
+            Mirror Coordinator
+            mirror/coord.rs")
+        MC -->|同任务双派发| MR
     end
 
     subgraph KL["　内核层 — Manifold Kernel　"]
         IS("推理调度器
             scheduler/queue.rs") --> VM("向量内存
             memory/vector.rs")
-        VM --> GS("图存储引擎
+        VM <--> GS("图存储引擎
             graph/store.rs")
     end
 
-    subgraph HL["　硬件抽象层 — HAL　"]
+    subgraph EV["　自进化子系统 — Self-Evolution　"]
+        direction TB
+        subgraph RESP["微观节律 · 内呼吸 Respiration"]
+            GEN("Generator
+                发散 / 吸气
+                evolution/respiration.rs") --> SBX("沙箱验证
+                屏息 / 验证")
+            SBX --> CRT("Critic
+                收敛 / 呼气")
+            CRT -->|沉淀| GEN
+        end
+        subgraph MIR["宏观节律 · 镜像对话 Mirror"]
+            MA("M7 实例 A
+                evolution/mirror.rs") <-->|m7 IR 总线
+                Unix Socket / shm| MB("M7 实例 B")
+            MA --> DBT("辩论 / 对偶蒸馏
+                Debate · Co-Distill")
+            MB --> DBT
+        end
+        subgraph GT["外部锚点 · Ground Truth"]
+            EXE("任务真实执行结果
+                ground_truth.rs") --> ARB("仲裁器
+                防合谋坍塌")
+            ARB -.分歧过大.-> HUM("人工介入 / 快照回滚")
+        end
+        RESP -->|候选 IR 模块| MIR
+        MIR -->|共识沉淀| GT
+        GT -->|奖励信号| RESP
+    end
+
+    subgraph CH["　计算 HAL — Compute HAL (MLIR)　"]
+        M7D("m7 dialect
+            模型母语原语
+            invoke · embed · graph.search")
+        M7D --> LINALG("linalg / tosa
+            张量算子层")
+        LINALG --> AFFINE("affine / scf
+            循环 + 控制流")
+        AFFINE --> VEC("vector / memref
+            SIMD + 内存")
+        VEC --> JIT("JIT / AOT
+            编译与缓存")
+        JIT --> BE_LLVM("llvm
+            CPU")
+        JIT --> BE_NVVM("nvvm / rocdl
+            GPU")
+        JIT --> BE_SPV("spirv
+            Vulkan")
+        JIT --> BE_NPU("自定义 npu dialect
+            NPU / TPU")
+    end
+
+    subgraph HL["　设备 HAL — Device HAL　"]
         AL("Alpine Linux 内核") --> DD("设备驱动")
         DD --> HW("GPU · NPU · TPU
             /dev/dri · /dev/npu")
+        DD --> VIS("视觉
+            屏幕 · 摄像头
+            /dev/fb0 · /dev/video*")
+        DD --> AUD("听觉
+            麦克风 · 扬声器
+            /dev/snd")
     end
 
-    IL --> OL --> KL --> HL
+    IL --> OL --> KL --> CH --> HL
+    KL <-->|读写经验/技能| EV
+    EV -->|新生成 IR 模块| M7D
+    GT -.真实反馈.-> HC
+    BE_LLVM -.ioctl/mmap.-> HW
+    BE_NVVM -.ioctl/mmap.-> HW
+    BE_SPV  -.ioctl/mmap.-> HW
+    BE_NPU  -.ioctl/mmap.-> HW
 ```
