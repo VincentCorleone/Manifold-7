@@ -4,6 +4,7 @@ MANIFOLD-7: Final implementation of the Common Class User Agent — built for th
 ## Core Thesis
 The core value of M7 is not compressing tokens.
 It is compressing **friction** —
+compressing the friction of survival,
 making it easier for people to do what they want to do.
 
 ## Detailed
